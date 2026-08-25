@@ -14,6 +14,17 @@ SCALER_PATH = SAVE_DIR / "clinical_scaler.pkl"
 CLINICAL_META_PATH = SAVE_DIR / "clinical_meta.json"
 CNN_PLOT_PATH = SAVE_DIR / "efficientnet_training.png"
 
+# Ultrasound image gate (rejects typical photos before the CNN runs).
+IMAGE_MIN_SIDE = 96
+IMAGE_MAX_BYTES = 25 * 1024 * 1024
+# Training scans in this project are grayscale with a large dark field.
+IMAGE_MAX_COLORFULNESS = 20.0
+IMAGE_MAX_COLORFULNESS_HARD = 80.0
+IMAGE_MIN_DARK_RATIO = 0.15
+IMAGE_MAX_MEAN_LUMA = 140.0
+IMAGE_MIN_CONTRAST = 12.0
+IMAGE_LOW_CONFIDENCE = 0.62
+
 BATCH_SIZE = 16
 NUM_EPOCHS = 30
 LR = 1e-4
@@ -105,4 +116,18 @@ FEATURE_META = {
 DISCLAIMER = (
     "Research prototype for academic use only. Not a medical device. "
     "Predictions are not a diagnosis — consult a qualified clinician."
+)
+
+SAFETY_NORMAL = (
+    "Safety advice: A normal score is not a medical clearance and does not mean "
+    "you are healthy. If you have symptoms (pain, yellowing of the eyes, swelling, "
+    "or unusual tiredness) or a doctor has asked for tests, still see a clinician. "
+    "Do not skip follow-up care because of this app."
+)
+
+SAFETY_DISEASE = (
+    "Safety advice: This is not a confirmed diagnosis. Do not start, stop, or "
+    "change any medicine on your own. Please consult a qualified doctor promptly "
+    "for proper examination and tests. Seek urgent care for severe abdominal pain, "
+    "jaundice, persistent vomiting, or sudden worsening."
 )

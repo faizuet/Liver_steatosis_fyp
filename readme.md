@@ -30,6 +30,7 @@ The two models are **not combined**. Each screen uses its own model.
 
 - Desktop GUI (CustomTkinter) with Ultrasound and Clinical labs views
 - Image classification with softmax confidence
+- Ultrasound image gate: reject typical non-scan photos before a disease label is shown
 - Clinical prediction with class probabilities
 - Input checks on lab fields (required numbers and allowed ranges)
 - Shared training/inference code so the GUI and CLI cannot drift apart
@@ -79,6 +80,7 @@ Liver_Diagnosis_System/
 ├── train_models.py      # Train models (CLI)
 ├── config.py            # Paths, features, lab ranges, label map
 ├── training.py          # Train, load, and predict
+├── image_gate.py        # Reject non-ultrasound images before CNN
 ├── liver_gui.py         # Desktop interface
 ├── ui_theme.py          # Colours, icons, layout tokens
 ├── requirements.txt
@@ -100,9 +102,12 @@ Liver_Diagnosis_System/
 
 ```
 User
-  ├─ Ultrasound image ──► resize 224×224, ImageNet normalize
+  ├─ Ultrasound image ──► file + appearance checks (image_gate.py)
+  │                         ──► if rejected: no class label
+  │                         ──► resize 224×224, ImageNet normalize
   │                         ──► EfficientNet-B0 (eval mode)
-  │                         ──► class + softmax confidence
+  │                         ──► grayscale (match training) + EfficientNet-B0
+  │                         ──► class + confidence  (or withhold)
   │
   └─ Raw lab values ──► range check
                           ──► map labs into CSV space (RAW_LAB_STATS)
@@ -114,6 +119,8 @@ User
 **Ultrasound**
 
 - Dataset folders: `Diseased`, `Normal`. Names are stored in `class_names.json` (ImageFolder order is alphabetical: Diseased = 0, Normal = 1).
+- Before prediction, `image_gate.py` rejects typical colour photos. Real ultrasound PNGs (including machine text/calipers) are allowed. Low confidence is shown as a caution, not a withheld result.
+- This is not a full modality detector: colour Doppler or odd crops may be rejected; other grayscale medical images may still pass.
 - Training uses random flip/rotation; **validation and inference do not**.
 - Split is 80/20, seeded (`SEED = 42`).
 - The image set is small (~72 augmented images). Treat accuracy as a demo metric, not a clinical claim.

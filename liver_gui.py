@@ -9,13 +9,14 @@ from tkinter import filedialog
 import customtkinter as ctk
 from PIL import Image, ImageTk
 
-from config import CLINICAL_FEATURES, DISCLAIMER, FEATURE_META
+from config import CLINICAL_FEATURES, DISCLAIMER, FEATURE_META, SAFETY_DISEASE, SAFETY_NORMAL
 from training import (
     load_or_train_adaboost,
     load_or_train_efficientnet,
     predict_from_clinical,
     predict_from_image,
 )
+from image_gate import UnsupportedImageError, assess_ultrasound_image
 from ui_theme import (
     ACCENT,
     ACCENT_HOVER,
@@ -40,6 +41,7 @@ from ui_theme import (
     TEXT,
     TEXT_SECONDARY,
     TOPBAR,
+    WARN,
     WHITE,
     center,
     empty_art,
@@ -250,6 +252,31 @@ class ResultCard(ctk.CTkFrame):
         self.p_normal = self._prob_row(self.prob_wrap, "Normal", OK)
         self.p_disease = self._prob_row(self.prob_wrap, "Disease", DANGER)
 
+        self.safety_wrap = ctk.CTkFrame(
+            pad,
+            fg_color=INSET,
+            corner_radius=10,
+            border_width=1,
+            border_color=BORDER,
+        )
+        ctk.CTkLabel(
+            self.safety_wrap,
+            text="SAFETY ADVICE",
+            font=f(11, "bold"),
+            text_color=FAINT,
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=(10, 0))
+        self.safety = ctk.CTkLabel(
+            self.safety_wrap,
+            text="",
+            font=f(12),
+            text_color=TEXT_SECONDARY,
+            wraplength=300,
+            justify="left",
+            anchor="w",
+        )
+        self.safety.pack(fill="x", padx=12, pady=(4, 12))
+
         self.footnote = ctk.CTkLabel(
             pad,
             text="Academic demonstration only. Not a clinical diagnosis.",
@@ -309,6 +336,7 @@ class ResultCard(ctk.CTkFrame):
         self.conf_value.configure(text="—")
         self.meter_wrap.pack_forget()
         self.prob_wrap.pack_forget()
+        self.safety_wrap.pack_forget()
 
     def show_loading(self, message: str):
         self._stop_pulse()
@@ -320,6 +348,7 @@ class ResultCard(ctk.CTkFrame):
         self.conf_value.configure(text="…")
         self.meter_wrap.pack(fill="x")
         self.prob_wrap.pack_forget()
+        self.safety_wrap.pack_forget()
         self._pulse_dir = 1
         self._pulse()
 
@@ -333,6 +362,7 @@ class ResultCard(ctk.CTkFrame):
         self.conf_value.configure(text="—")
         self.meter_wrap.pack_forget()
         self.prob_wrap.pack_forget()
+        self.safety_wrap.pack_forget()
 
     def show_success(
         self,
@@ -365,6 +395,8 @@ class ResultCard(ctk.CTkFrame):
             self.p_disease["value"].configure(text=f"{d:.0%}")
         else:
             self.prob_wrap.pack_forget()
+        self.safety.configure(text=SAFETY_DISEASE if positive else SAFETY_NORMAL)
+        self.safety_wrap.pack(fill="x", pady=(14, 0))
 
 
 class Banner(ctk.CTkFrame):
@@ -397,6 +429,8 @@ class LiverDiagnosisApp(ctk.CTk):
         self.filepath = None
         self._source_pil = None
         self._preview_photo = None
+        self._image_supported = False
+        self._image_reject_reason = ""
         self._busy = False
         self._narrow = False
         self._icon_only = False
@@ -868,8 +902,18 @@ class LiverDiagnosisApp(ctk.CTk):
             self._source_pil = img
             self.filepath = path
             self._render_preview()
-            self.file_caption.configure(text=Path(path).name, text_color=TEXT_SECONDARY)
-            self.img_result.show_idle()
+            ok, reason = assess_ultrasound_image(img)
+            self._image_supported = ok
+            self._image_reject_reason = reason
+            if ok:
+                self.file_caption.configure(text=Path(path).name, text_color=TEXT_SECONDARY)
+                self.img_result.show_idle()
+            else:
+                self.file_caption.configure(
+                    text=f"{Path(path).name}  ·  not a supported ultrasound",
+                    text_color=WARN,
+                )
+                self.img_result.show_error(reason)
         except Exception:
             self.filepath = None
             self._source_pil = None
@@ -878,6 +922,11 @@ class LiverDiagnosisApp(ctk.CTk):
     def predict_from_image_clicked(self):
         if not self.filepath:
             self.img_result.show_error("Select an ultrasound image before running analysis.")
+            return
+        if not self._image_supported:
+            self.img_result.show_error(
+                self._image_reject_reason or "This does not appear to be a liver ultrasound."
+            )
             return
         if self._busy:
             return
@@ -890,13 +939,26 @@ class LiverDiagnosisApp(ctk.CTk):
         try:
             cls, risk, conf = predict_from_image(path, self.cnn_model, self.class_names)
             self.after(0, lambda: self._show_image_result(cls, risk, conf))
+        except UnsupportedImageError as exc:
+            self.after(0, lambda e=exc: self._reject_image(str(e)))
         except Exception as exc:
             self.after(0, lambda e=exc: self._fail(e, "img"))
 
+    def _reject_image(self, message: str):
+        self.img_result.show_error(message)
+        self._set_busy(False)
+
     def _show_image_result(self, cls, risk, conf):
+        from config import IMAGE_LOW_CONFIDENCE
+
         positive = cls.lower() == "diseased"
         title = "Disease indicated" if positive else "Normal pattern"
         body = f"{cls}  ·  {risk}\nThis is a model score, not a radiology report."
+        if conf < IMAGE_LOW_CONFIDENCE:
+            body += (
+                "\nConfidence is moderate: this scan differs from the small training set "
+                "(for example overlays or a different crop)."
+            )
         self.img_result.show_success(title, body, conf, positive)
         self._set_busy(False)
 

@@ -8,7 +8,6 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from PIL import Image
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.metrics import (
     accuracy_score,
@@ -391,11 +390,10 @@ def load_or_train_adaboost():
 def predict_from_image(img_path: str | Path, model, class_names, device=None):
     import torch
 
+    from image_gate import to_model_image, validate_image_file
+
     device = device or get_device()
-    path = Path(img_path)
-    with Image.open(path) as probe:
-        probe.verify()
-    image = Image.open(path).convert("RGB")
+    image = to_model_image(validate_image_file(img_path))
     tensor = eval_transform()(image).unsqueeze(0).to(device)
 
     model.eval()
