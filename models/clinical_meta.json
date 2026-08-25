@@ -1,0 +1,32 @@
+{
+  "features": [
+    "Age",
+    "Direct_Bilrubin",
+    "Alkaline_Phosphotase",
+    "Alamine_Aminotransferase",
+    "Aspartate_Aminotransferase",
+    "Albumin",
+    "Albumin_and_Globulin_Ratio"
+  ],
+  "label_map": {
+    "0": "Normal",
+    "1": "Disease"
+  },
+  "n_samples": 199,
+  "metrics": {
+    "accuracy": 0.9,
+    "macro_f1": 0.8566308243727598,
+    "disease_f1": 0.7777777777777778,
+    "confusion_matrix": [
+      [
+        29,
+        4
+      ],
+      [
+        0,
+        7
+      ]
+    ]
+  },
+  "note": "CSV lab columns are pre-z-scored; Age is in years. StandardScaler was fit on the training split only. At inference, convert raw labs with RAW_LAB_STATS then apply the scaler."
+}
