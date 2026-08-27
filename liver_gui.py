@@ -7,30 +7,39 @@ from pathlib import Path
 from tkinter import filedialog
 
 import customtkinter as ctk
-from PIL import Image, ImageTk
+from PIL import ImageTk
 
-from config import CLINICAL_FEATURES, DISCLAIMER, FEATURE_META, SAFETY_DISEASE, SAFETY_NORMAL
+from config import (
+    CLINICAL_FEATURES,
+    DISCLAIMER,
+    FEATURE_META,
+    IMAGE_ALLOWED_EXTENSIONS,
+    IMAGE_MAX_MB,
+    SAFETY_DISEASE,
+    SAFETY_NORMAL,
+)
 from training import (
     load_or_train_adaboost,
     load_or_train_efficientnet,
     predict_from_clinical,
     predict_from_image,
 )
-from image_gate import UnsupportedImageError, assess_ultrasound_image
+from image_gate import UnsupportedImageError, assess_ultrasound_image, inspect_image_path
 from ui_theme import (
     ACCENT,
-    ACCENT_HOVER,
     ACCENT_SOFT,
     BG,
     BORDER,
     BORDER_FOCUS,
     BREAKPOINT,
     CARD,
+    CARD_RADIUS,
     DANGER,
     DANGER_SOFT,
-    ELEVATED,
     FAINT,
+    HOVER,
     INSET,
+    INPUT_RADIUS,
     MUTED,
     OK,
     OK_SOFT,
@@ -41,15 +50,16 @@ from ui_theme import (
     TEXT,
     TEXT_SECONDARY,
     TOPBAR,
-    WARN,
     WHITE,
     center,
     empty_art,
     f,
     icon,
+    primary_button,
+    secondary_button,
 )
 
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
 
@@ -75,9 +85,10 @@ class NavItem(ctk.CTkFrame):
             anchor="w",
             height=40,
             fg_color="transparent",
-            hover_color=ELEVATED,
+            hover_color=HOVER,
             text_color=MUTED,
             font=f(13),
+            corner_radius=10,
             command=self.command,
         )
         self.btn.pack(side="left", fill="x", expand=True, padx=(0, 10))
@@ -88,8 +99,9 @@ class NavItem(ctk.CTkFrame):
         self.bar.configure(fg_color=ACCENT if selected else "transparent")
         self.btn.configure(
             image=icon(self.icon_name, 18, color),
-            text_color=WHITE if selected else MUTED,
+            text_color=TEXT if selected else MUTED,
             fg_color=ACCENT_SOFT if selected else "transparent",
+            hover_color=ACCENT_SOFT if selected else HOVER,
             font=f(13, "bold" if selected else "normal"),
         )
         self._apply_collapse()
@@ -131,12 +143,13 @@ class FormField(ctk.CTkFrame):
         self.entry = ctk.CTkEntry(
             self,
             height=40,
-            corner_radius=10,
+            corner_radius=INPUT_RADIUS,
             border_width=1,
             border_color=BORDER,
             fg_color=INSET,
             text_color=TEXT,
-            font=f(14),
+            placeholder_text_color=FAINT,
+            font=f(13),
             placeholder_text=f"Enter {meta['label'].lower()}",
         )
         self.entry.grid(row=1, column=0, sticky="ew", pady=(6, 0))
@@ -177,7 +190,7 @@ class FormField(ctk.CTkFrame):
 class ResultCard(ctk.CTkFrame):
     def __init__(self, master, empty_title: str, empty_body: str, art_kind: str):
         super().__init__(
-            master, fg_color=CARD, corner_radius=16, border_width=1, border_color=BORDER
+            master, fg_color=CARD, corner_radius=CARD_RADIUS, border_width=1, border_color=BORDER
         )
         self.empty_title = empty_title
         self.empty_body = empty_body
@@ -186,7 +199,7 @@ class ResultCard(ctk.CTkFrame):
         self._pulse_dir = 1
 
         pad = ctk.CTkFrame(self, fg_color="transparent")
-        pad.pack(fill="both", expand=True, padx=24, pady=22)
+        pad.pack(fill="both", expand=True, padx=22, pady=20)
 
         eyebrow = ctk.CTkFrame(pad, fg_color="transparent")
         eyebrow.pack(fill="x")
@@ -213,7 +226,7 @@ class ResultCard(ctk.CTkFrame):
         self.icon_label.pack(pady=(28, 12))
 
         self.title = ctk.CTkLabel(
-            pad, text=empty_title, font=f(20, "bold"), text_color=TEXT, wraplength=320
+            pad, text=empty_title, font=f(20, "bold"), text_color=TEXT, wraplength=340
         )
         self.title.pack()
         self.body = ctk.CTkLabel(
@@ -221,7 +234,7 @@ class ResultCard(ctk.CTkFrame):
             text=empty_body,
             font=f(13),
             text_color=MUTED,
-            wraplength=320,
+            wraplength=340,
             justify="center",
         )
         self.body.pack(pady=(6, 18))
@@ -254,7 +267,7 @@ class ResultCard(ctk.CTkFrame):
 
         self.safety_wrap = ctk.CTkFrame(
             pad,
-            fg_color=INSET,
+            fg_color=SURFACE,
             corner_radius=10,
             border_width=1,
             border_color=BORDER,
@@ -282,7 +295,7 @@ class ResultCard(ctk.CTkFrame):
             text="Academic demonstration only. Not a clinical diagnosis.",
             font=f(11),
             text_color=FAINT,
-            wraplength=320,
+            wraplength=340,
             justify="center",
         )
         self.footnote.pack(side="bottom", pady=(18, 0))
@@ -320,7 +333,7 @@ class ResultCard(ctk.CTkFrame):
             self._pulse_dir = 1
             nxt = 0.12
         self.bar.set(nxt)
-        self._pulse_job = self.after(30, self._pulse)
+        self._pulse_job = self.after(45, self._pulse)
 
     def _set_pill(self, text: str, fg: str, bg: str):
         self.pill.configure(text=text, text_color=fg, fg_color=bg)
@@ -401,7 +414,7 @@ class ResultCard(ctk.CTkFrame):
 
 class Banner(ctk.CTkFrame):
     def __init__(self, master):
-        super().__init__(master, fg_color=DANGER_SOFT, corner_radius=10, border_width=1, border_color=DANGER)
+        super().__init__(master, fg_color=DANGER_SOFT, corner_radius=12, border_width=1, border_color=DANGER)
         self.label = ctk.CTkLabel(
             self,
             text="",
@@ -431,6 +444,7 @@ class LiverDiagnosisApp(ctk.CTk):
         self._preview_photo = None
         self._image_supported = False
         self._image_reject_reason = ""
+        self._upload_state = "idle"
         self._busy = False
         self._narrow = False
         self._icon_only = False
@@ -450,7 +464,7 @@ class LiverDiagnosisApp(ctk.CTk):
         self.splash.pack(fill="both", expand=True)
 
         card = ctk.CTkFrame(
-            self.splash, fg_color=CARD, corner_radius=18, border_width=1, border_color=BORDER
+            self.splash, fg_color=CARD, corner_radius=CARD_RADIUS, border_width=1, border_color=BORDER
         )
         card.pack(expand=True, fill="both", padx=26, pady=26)
 
@@ -460,10 +474,14 @@ class LiverDiagnosisApp(ctk.CTk):
         titles = ctk.CTkFrame(head, fg_color="transparent")
         titles.pack(side="left", padx=12)
         ctk.CTkLabel(
-            titles, text="Liver Diagnosis System", font=f(20, "bold"), text_color=WHITE, anchor="w"
+            titles, text="Liver Diagnosis System", font=f(20, "bold"), text_color=TEXT, anchor="w"
         ).pack(anchor="w")
         ctk.CTkLabel(
-            titles, text="Preparing the workspace", font=f(13), text_color=MUTED, anchor="w"
+            titles,
+            text="Academic prototype  ·  loading models",
+            font=f(13),
+            text_color=MUTED,
+            anchor="w",
         ).pack(anchor="w")
 
         self.steps = {}
@@ -565,10 +583,10 @@ class LiverDiagnosisApp(ctk.CTk):
         self.brand_text = ctk.CTkFrame(brand, fg_color="transparent")
         self.brand_text.pack(side="left", padx=10)
         ctk.CTkLabel(
-            self.brand_text, text="LDS", font=f(16, "bold"), text_color=WHITE, anchor="w"
+            self.brand_text, text="Liver Diagnosis", font=f(15, "bold"), text_color=TEXT, anchor="w"
         ).pack(anchor="w")
         ctk.CTkLabel(
-            self.brand_text, text="Clinical AI", font=f(11), text_color=FAINT, anchor="w"
+            self.brand_text, text="FYP prototype", font=f(11), text_color=FAINT, anchor="w"
         ).pack(anchor="w")
 
         self.nav_scan = NavItem(self.sidebar, "scan", "Ultrasound", "scan", lambda: self._goto("scan"))
@@ -599,7 +617,14 @@ class LiverDiagnosisApp(ctk.CTk):
         self.workspace.grid_columnconfigure(0, weight=1)
         self.workspace.grid_rowconfigure(1, weight=1)
 
-        top = ctk.CTkFrame(self.workspace, fg_color=TOPBAR, height=72, corner_radius=0)
+        top = ctk.CTkFrame(
+            self.workspace,
+            fg_color=TOPBAR,
+            height=76,
+            corner_radius=0,
+            border_width=1,
+            border_color=BORDER,
+        )
         top.grid(row=0, column=0, sticky="ew")
         top.grid_propagate(False)
         top.grid_columnconfigure(0, weight=1)
@@ -611,19 +636,19 @@ class LiverDiagnosisApp(ctk.CTk):
         )
         self.page_kicker.pack(anchor="w")
         self.page_title = ctk.CTkLabel(
-            titles, text="Ultrasound analysis", font=f(20, "bold"), text_color=WHITE, anchor="w"
+            titles, text="Ultrasound analysis", font=f(20, "bold"), text_color=TEXT, anchor="w"
         )
         self.page_title.pack(anchor="w")
 
         self.model_chip = ctk.CTkLabel(
             top,
-            text="  EfficientNet-B0",
+            text="  EfficientNet-B0  ·  image model",
             image=icon("spark", 14, ACCENT),
             compound="left",
             font=f(12),
             text_color=TEXT_SECONDARY,
             fg_color=SURFACE,
-            corner_radius=12,
+            corner_radius=10,
             padx=12,
             pady=6,
         )
@@ -646,16 +671,23 @@ class LiverDiagnosisApp(ctk.CTk):
         self._build_scan_page()
         self._build_labs_page()
 
-        footer = ctk.CTkFrame(self.workspace, fg_color=TOPBAR, height=44, corner_radius=0)
+        footer = ctk.CTkFrame(
+            self.workspace,
+            fg_color=TOPBAR,
+            height=48,
+            corner_radius=0,
+            border_width=1,
+            border_color=BORDER,
+        )
         footer.grid(row=2, column=0, sticky="ew")
         footer.grid_propagate(False)
         ctk.CTkLabel(
             footer, text=DISCLAIMER, font=f(11), text_color=MUTED, wraplength=980
-        ).pack(expand=True, padx=20)
+        ).pack(expand=True, padx=24)
 
     def _card(self, master) -> ctk.CTkFrame:
         return ctk.CTkFrame(
-            master, fg_color=CARD, corner_radius=16, border_width=1, border_color=BORDER
+            master, fg_color=CARD, corner_radius=CARD_RADIUS, border_width=1, border_color=BORDER
         )
 
     def _build_scan_page(self):
@@ -676,7 +708,7 @@ class LiverDiagnosisApp(ctk.CTk):
         ).grid(row=1, column=0, sticky="w", padx=22, pady=(2, 0))
         ctk.CTkLabel(
             left,
-            text="Drop-in a scan to classify Diseased vs Normal. Supported: JPG, PNG, BMP, TIFF.",
+            text="Upload a liver ultrasound. EfficientNet-B0 classifies Diseased vs Normal.",
             font=f(13),
             text_color=MUTED,
             wraplength=560,
@@ -685,22 +717,31 @@ class LiverDiagnosisApp(ctk.CTk):
         ).grid(row=2, column=0, sticky="w", padx=22, pady=(4, 12))
 
         self.preview_frame = ctk.CTkFrame(
-            left, fg_color=INSET, corner_radius=14, cursor="hand2"
+            left,
+            fg_color=INSET,
+            corner_radius=14,
+            cursor="hand2",
+            border_width=2,
+            border_color=BORDER,
         )
         self.preview_frame.grid(row=3, column=0, sticky="nsew", padx=22, pady=(0, 8))
         self.preview_frame.bind("<Button-1>", lambda _e: self.select_image())
         self.preview_frame.bind("<Configure>", lambda _e: self._render_preview())
+        self.preview_frame.bind("<Enter>", self._on_upload_enter)
+        self.preview_frame.bind("<Leave>", self._on_upload_leave)
 
         self.preview_label = ctk.CTkLabel(
             self.preview_frame,
-            text="  Click to choose an image",
-            image=icon("image", 28, MUTED),
+            text=self._upload_placeholder_text(),
+            image=icon("image", 36, MUTED),
             compound="top",
             font=f(13),
-            text_color=FAINT,
+            text_color=MUTED,
         )
-        self.preview_label.pack(expand=True)
+        self.preview_label.pack(expand=True, padx=16, pady=16)
         self.preview_label.bind("<Button-1>", lambda _e: self.select_image())
+        self.preview_label.bind("<Enter>", self._on_upload_enter)
+        self.preview_label.bind("<Leave>", self._on_upload_leave)
 
         self.file_caption = ctk.CTkLabel(
             left, text="No file selected", font=f(12), text_color=FAINT, anchor="w"
@@ -709,42 +750,27 @@ class LiverDiagnosisApp(ctk.CTk):
 
         actions = ctk.CTkFrame(left, fg_color="transparent")
         actions.grid(row=5, column=0, sticky="ew", padx=22, pady=(0, 20))
-        self.select_btn = ctk.CTkButton(
+        self.select_btn = secondary_button(
             actions,
-            text="  Select image",
+            "  Select image",
+            self.select_image,
             image=icon("image", 16, TEXT),
-            compound="left",
-            height=42,
-            width=160,
-            corner_radius=10,
-            fg_color=ELEVATED,
-            hover_color=BORDER,
-            border_width=1,
-            border_color=BORDER,
-            text_color=TEXT,
-            font=f(13, "bold"),
-            command=self.select_image,
+            width=156,
         )
         self.select_btn.pack(side="left")
-        self.predict_img_btn = ctk.CTkButton(
+        self.predict_img_btn = primary_button(
             actions,
-            text="  Run analysis",
+            "  Run analysis",
+            self.predict_from_image_clicked,
             image=icon("spark", 16, WHITE),
-            compound="left",
-            height=42,
             width=168,
-            corner_radius=10,
-            fg_color=ACCENT,
-            hover_color=ACCENT_HOVER,
-            font=f(13, "bold"),
-            command=self.predict_from_image_clicked,
         )
         self.predict_img_btn.pack(side="right")
 
         self.img_result = ResultCard(
             self.page_scan,
             "No scan analysed yet",
-            "Select an ultrasound image, then run analysis to see the model output.",
+            "Select an ultrasound, then run analysis to see the EfficientNet-B0 output.",
             "scan",
         )
         self.img_result.grid(row=0, column=1, sticky="nsew")
@@ -762,7 +788,7 @@ class LiverDiagnosisApp(ctk.CTk):
         ).pack(fill="x", padx=22, pady=(2, 0))
         ctk.CTkLabel(
             left,
-            text="Enter raw clinical units. Each field is range-checked before scoring.",
+            text="Enter values in clinical units. AdaBoost scores Normal vs Disease after range checks.",
             font=f(13),
             text_color=MUTED,
             wraplength=600,
@@ -788,40 +814,23 @@ class LiverDiagnosisApp(ctk.CTk):
 
         actions = ctk.CTkFrame(left, fg_color="transparent")
         actions.pack(fill="x", padx=22, pady=(4, 20))
-        self.clear_btn = ctk.CTkButton(
-            actions,
-            text="Clear form",
-            height=42,
-            width=130,
-            corner_radius=10,
-            fg_color=ELEVATED,
-            hover_color=BORDER,
-            border_width=1,
-            border_color=BORDER,
-            text_color=TEXT,
-            font=f(13, "bold"),
-            command=self._clear_clinical_form,
+        self.clear_btn = secondary_button(
+            actions, "Clear form", self._clear_clinical_form, width=130
         )
         self.clear_btn.pack(side="left")
-        self.predict_data_btn = ctk.CTkButton(
+        self.predict_data_btn = primary_button(
             actions,
-            text="  Run analysis",
+            "  Run analysis",
+            self.predict_from_data_clicked,
             image=icon("spark", 16, WHITE),
-            compound="left",
-            height=42,
             width=168,
-            corner_radius=10,
-            fg_color=ACCENT,
-            hover_color=ACCENT_HOVER,
-            font=f(13, "bold"),
-            command=self.predict_from_data_clicked,
         )
         self.predict_data_btn.pack(side="right")
 
         self.data_result = ResultCard(
             self.page_labs,
             "No labs analysed yet",
-            "Fill every field, then run analysis to see Normal vs Disease probabilities.",
+            "Fill every field, then run analysis to see AdaBoost Normal vs Disease scores.",
             "labs",
         )
         self.data_result.grid(row=0, column=1, sticky="nsew")
@@ -833,12 +842,12 @@ class LiverDiagnosisApp(ctk.CTk):
         if page == "scan":
             self.page_title.configure(text="Ultrasound analysis")
             self.page_kicker.configure(text="IMAGING")
-            self.model_chip.configure(text="  EfficientNet-B0")
+            self.model_chip.configure(text="  EfficientNet-B0  ·  image model")
             self.page_scan.tkraise()
         else:
             self.page_title.configure(text="Clinical laboratory analysis")
             self.page_kicker.configure(text="BIOMARKERS")
-            self.model_chip.configure(text="  AdaBoost")
+            self.model_chip.configure(text="  AdaBoost  ·  lab model")
             self.page_labs.tkraise()
 
     def _on_resize(self, event):
@@ -880,6 +889,58 @@ class LiverDiagnosisApp(ctk.CTk):
             self.nav_scan.set_collapsed(icon_only)
             self.nav_labs.set_collapsed(icon_only)
 
+    def _upload_placeholder_text(self) -> str:
+        return (
+            f"Click to upload a liver ultrasound\n"
+            f"JPG, PNG, BMP, or TIFF  ·  max {IMAGE_MAX_MB} MB"
+        )
+
+    def _set_upload_chrome(self, state: str) -> None:
+        self._upload_state = state
+        colors = {
+            "idle": BORDER,
+            "hover": ACCENT,
+            "ready": OK,
+            "error": DANGER,
+        }
+        self.preview_frame.configure(border_color=colors.get(state, BORDER))
+        if self._source_pil is None:
+            self.preview_frame.configure(
+                fg_color=ACCENT_SOFT if state == "hover" else INSET
+            )
+
+    def _on_upload_enter(self, _event=None):
+        if self._upload_state in ("idle", "hover"):
+            self._set_upload_chrome("hover")
+
+    def _on_upload_leave(self, _event=None):
+        if self._pointer_in_upload():
+            return
+        if self._upload_state == "hover":
+            self._set_upload_chrome("idle")
+
+    def _pointer_in_upload(self) -> bool:
+        widget = self.preview_frame
+        try:
+            x = widget.winfo_pointerx() - widget.winfo_rootx()
+            y = widget.winfo_pointery() - widget.winfo_rooty()
+        except Exception:
+            return False
+        return 0 <= x < widget.winfo_width() and 0 <= y < widget.winfo_height()
+
+    def _reset_upload(self) -> None:
+        self.filepath = None
+        self._source_pil = None
+        self._preview_photo = None
+        self._image_supported = False
+        self._image_reject_reason = ""
+        self.preview_label.configure(
+            image=icon("image", 36, MUTED),
+            text=self._upload_placeholder_text(),
+        )
+        self.file_caption.configure(text="No file selected", text_color=FAINT)
+        self._set_upload_chrome("idle")
+
     def _render_preview(self):
         if self._source_pil is None:
             return
@@ -892,38 +953,56 @@ class LiverDiagnosisApp(ctk.CTk):
         self.preview_label.configure(image=photo, text="")
 
     def select_image(self):
+        patterns = " ".join(f"*{ext}" for ext in IMAGE_ALLOWED_EXTENSIONS)
         path = filedialog.askopenfilename(
-            filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.tif *.tiff")]
+            title="Select a liver ultrasound",
+            filetypes=[
+                ("Ultrasound images", patterns),
+                ("JPEG", "*.jpg *.jpeg"),
+                ("PNG", "*.png"),
+                ("TIFF", "*.tif *.tiff"),
+                ("BMP", "*.bmp"),
+            ],
         )
         if not path:
             return
         try:
-            img = Image.open(path).convert("RGB")
-            self._source_pil = img
-            self.filepath = path
-            self._render_preview()
-            ok, reason = assess_ultrasound_image(img)
-            self._image_supported = ok
-            self._image_reject_reason = reason
-            if ok:
-                self.file_caption.configure(text=Path(path).name, text_color=TEXT_SECONDARY)
-                self.img_result.show_idle()
-            else:
-                self.file_caption.configure(
-                    text=f"{Path(path).name}  ·  not a supported ultrasound",
-                    text_color=WARN,
-                )
-                self.img_result.show_error(reason)
-        except Exception:
-            self.filepath = None
-            self._source_pil = None
-            self.img_result.show_error("The selected file could not be opened as an image.")
+            img = inspect_image_path(path)
+        except UnsupportedImageError as exc:
+            self._reset_upload()
+            self._set_upload_chrome("error")
+            self.file_caption.configure(text=str(exc), text_color=DANGER)
+            self.img_result.show_error(str(exc))
+            return
+
+        self._source_pil = img
+        self.filepath = path
+        self._render_preview()
+        ok, reason = assess_ultrasound_image(img)
+        self._image_supported = ok
+        self._image_reject_reason = reason
+        name = Path(path).name
+        if ok:
+            self._set_upload_chrome("ready")
+            self.file_caption.configure(text=f"{name}  ·  ready to analyse", text_color=OK)
+            self.img_result.show_idle()
+        else:
+            self._set_upload_chrome("error")
+            self.file_caption.configure(
+                text=f"{name}  ·  not a valid ultrasound",
+                text_color=DANGER,
+            )
+            self.img_result.show_error(reason)
 
     def predict_from_image_clicked(self):
         if not self.filepath:
-            self.img_result.show_error("Select an ultrasound image before running analysis.")
+            self._set_upload_chrome("error")
+            self.img_result.show_error(
+                "No image was provided. Please select a liver ultrasound scan."
+            )
             return
         if not self._image_supported:
+            self._set_upload_chrome("error")
             self.img_result.show_error(
                 self._image_reject_reason or "This does not appear to be a liver ultrasound."
             )
@@ -945,6 +1024,7 @@ class LiverDiagnosisApp(ctk.CTk):
             self.after(0, lambda e=exc: self._fail(e, "img"))
 
     def _reject_image(self, message: str):
+        self._set_upload_chrome("error")
         self.img_result.show_error(message)
         self._set_busy(False)
 

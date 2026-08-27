@@ -12,36 +12,40 @@ import customtkinter as ctk
 from PIL import Image, ImageDraw
 
 # ---------------------------------------------------------------------------
-# Color tokens
+# Color tokens — light clinical palette (presentation-ready, not a product skin)
 # ---------------------------------------------------------------------------
-BG = "#0B1016"
-SIDEBAR = "#0E1620"
-TOPBAR = "#101820"
-SURFACE = "#151D27"
-CARD = "#1B2430"
-INSET = "#111820"
-ELEVATED = "#222C38"
-BORDER = "#2C3644"
-BORDER_FOCUS = "#3BA89A"
-TEXT = "#F2F5F8"
-TEXT_SECONDARY = "#C5CDD6"
-MUTED = "#8A95A3"
-FAINT = "#5E6A78"
-ACCENT = "#2F9E8F"
-ACCENT_HOVER = "#3CB3A3"
-ACCENT_SOFT = "#16332F"
-OK = "#3DDC97"
-OK_SOFT = "#14352C"
-DANGER = "#E06B63"
-DANGER_SOFT = "#3A1E1C"
-WARN = "#E0A25A"
+BG = "#F3F6F9"
+SIDEBAR = "#FFFFFF"
+TOPBAR = "#FFFFFF"
+SURFACE = "#EEF2F6"
+CARD = "#FFFFFF"
+INSET = "#F0F4F8"
+ELEVATED = "#E8EEF4"
+HOVER = "#DCE5EE"
+BORDER = "#D5DEE8"
+BORDER_FOCUS = "#2A9B8F"
+TEXT = "#1A2B3C"
+TEXT_SECONDARY = "#3D5166"
+MUTED = "#5C6F82"
+FAINT = "#8A9AAB"
+ACCENT = "#1F8A7F"
+ACCENT_HOVER = "#17756B"
+ACCENT_SOFT = "#E5F5F2"
+OK = "#1B8A5A"
+OK_SOFT = "#E6F6EE"
+DANGER = "#C44B45"
+DANGER_SOFT = "#FBECEC"
+WARN = "#B7791F"
 WHITE = "#FFFFFF"
 
 FONT = "Segoe UI"
 
 BREAKPOINT = 1140
-SIDEBAR_WIDE = 228
+SIDEBAR_WIDE = 236
 SIDEBAR_NARROW = 76
+CARD_RADIUS = 16
+BUTTON_RADIUS = 12
+INPUT_RADIUS = 10
 
 
 def f(size: int, weight: str = "normal") -> ctk.CTkFont:
@@ -137,7 +141,7 @@ def _empty_art_pil(kind: str, size: int) -> Image.Image:
     s = size * 2
     img, d = _canvas(s)
     cx = cy = s // 2
-    d.ellipse((cx - s * 0.46, cy - s * 0.46, cx + s * 0.46, cy + s * 0.46), fill=_hex(INSET))
+    d.ellipse((cx - s * 0.46, cy - s * 0.46, cx + s * 0.46, cy + s * 0.46), fill=_hex(SURFACE))
     d.ellipse((cx - s * 0.34, cy - s * 0.34, cx + s * 0.34, cy + s * 0.34), outline=_hex(BORDER), width=3)
     if kind == "scan":
         m = s // 5
@@ -173,3 +177,39 @@ def empty_art(kind: str, size: int = 120) -> ctk.CTkImage:
     """Soft empty-state illustration (exact palette, no stock clipart)."""
     out = _empty_art_pil(kind, size)
     return ctk.CTkImage(light_image=out, dark_image=out, size=(size, size))
+
+
+def primary_button(master, text, command, image=None, width=168):
+    return ctk.CTkButton(
+        master,
+        text=text,
+        image=image,
+        compound="left" if image is not None else "center",
+        height=42,
+        width=width,
+        corner_radius=BUTTON_RADIUS,
+        fg_color=ACCENT,
+        hover_color=ACCENT_HOVER,
+        text_color=WHITE,
+        font=f(13, "bold"),
+        command=command,
+    )
+
+
+def secondary_button(master, text, command, image=None, width=156):
+    return ctk.CTkButton(
+        master,
+        text=text,
+        image=image,
+        compound="left" if image is not None else "center",
+        height=42,
+        width=width,
+        corner_radius=BUTTON_RADIUS,
+        fg_color=WHITE,
+        hover_color=HOVER,
+        border_width=1,
+        border_color=BORDER,
+        text_color=TEXT,
+        font=f(13, "bold"),
+        command=command,
+    )
