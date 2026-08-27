@@ -17,10 +17,14 @@ import numpy as np
 from PIL import Image
 
 from config import (
+    IMAGE_ALLOWED_EXTENSIONS,
+    IMAGE_ALLOWED_FORMATS,
     IMAGE_MAX_BYTES,
     IMAGE_MAX_COLORFULNESS,
     IMAGE_MAX_COLORFULNESS_HARD,
+    IMAGE_MAX_MB,
     IMAGE_MAX_MEAN_LUMA,
+    IMAGE_MAX_SIDE,
     IMAGE_MIN_CONTRAST,
     IMAGE_MIN_DARK_RATIO,
     IMAGE_MIN_SIDE,
@@ -28,7 +32,7 @@ from config import (
 
 REJECT_NOT_ULTRASOUND = (
     "This does not appear to be a liver ultrasound. "
-    "Please upload a liver ultrasound scan (JPG or PNG)."
+    "Please upload a liver ultrasound scan (JPG, PNG, BMP, or TIFF)."
 )
 
 
@@ -81,23 +85,75 @@ def to_model_image(image: Image.Image) -> Image.Image:
     return image.convert("L").convert("RGB")
 
 
-def validate_image_file(path: str | Path) -> Image.Image:
-    """Open and technically validate an image file. Raises UnsupportedImageError."""
+def inspect_image_path(path: str | Path | None) -> Image.Image:
+    """Technical checks only (type, size, integrity, dimensions).
+
+    Does not run the ultrasound appearance gate. Raises UnsupportedImageError.
+    """
+    if path is None or not str(path).strip():
+        raise UnsupportedImageError(
+            "No image was provided. Please select a liver ultrasound scan."
+        )
+
     file_path = Path(path)
     if not file_path.is_file():
         raise UnsupportedImageError("The selected file could not be found.")
-    if file_path.stat().st_size > IMAGE_MAX_BYTES:
-        raise UnsupportedImageError("The file is too large. Please use an image under 25 MB.")
 
+    suffix = file_path.suffix.lower()
+    if suffix not in IMAGE_ALLOWED_EXTENSIONS:
+        raise UnsupportedImageError(
+            "Unsupported file type. Please upload a JPG, PNG, BMP, or TIFF image."
+        )
+
+    size = file_path.stat().st_size
+    if size <= 0:
+        raise UnsupportedImageError(
+            "The file is empty. Please choose a valid ultrasound image."
+        )
+    if size > IMAGE_MAX_BYTES:
+        raise UnsupportedImageError(
+            f"The file is too large. Please use an image under {IMAGE_MAX_MB} MB."
+        )
+
+    fmt = ""
     try:
         with Image.open(file_path) as probe:
             probe.verify()
-        image = Image.open(file_path).convert("RGB")
+            fmt = (probe.format or "").upper()
+        with Image.open(file_path) as raw:
+            fmt = fmt or (raw.format or "").upper()
+            raw.load()
+            width, height = raw.size
+            image = raw.convert("RGB")
+    except UnsupportedImageError:
+        raise
     except Exception as exc:
         raise UnsupportedImageError(
-            "The selected file could not be opened as an image."
+            "This file is damaged or not a valid image. Please try another scan."
         ) from exc
 
+    if fmt not in IMAGE_ALLOWED_FORMATS:
+        raise UnsupportedImageError(
+            "Unsupported file type. Please upload a JPG, PNG, BMP, or TIFF image."
+        )
+    if min(width, height) < IMAGE_MIN_SIDE:
+        raise UnsupportedImageError(
+            "Image resolution is too low. Please upload a clearer ultrasound scan."
+        )
+    if max(width, height) > IMAGE_MAX_SIDE:
+        raise UnsupportedImageError(
+            f"Image is too large to analyse. Please use a scan under "
+            f"{IMAGE_MAX_SIDE}×{IMAGE_MAX_SIDE} pixels."
+        )
+    return image
+
+
+def validate_image_file(path: str | Path | None) -> Image.Image:
+    """Full gate used by inference: technical checks + ultrasound appearance.
+
+    Call this from the prediction path so the UI cannot skip validation.
+    """
+    image = inspect_image_path(path)
     ok, reason = assess_ultrasound_image(image)
     if not ok:
         raise UnsupportedImageError(reason)

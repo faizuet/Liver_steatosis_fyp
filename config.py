@@ -15,8 +15,12 @@ CLINICAL_META_PATH = SAVE_DIR / "clinical_meta.json"
 CNN_PLOT_PATH = SAVE_DIR / "efficientnet_training.png"
 
 # Ultrasound image gate (rejects typical photos before the CNN runs).
+IMAGE_ALLOWED_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff")
+IMAGE_ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "BMP", "TIFF"})
 IMAGE_MIN_SIDE = 96
-IMAGE_MAX_BYTES = 25 * 1024 * 1024
+IMAGE_MAX_SIDE = 8192
+IMAGE_MAX_MB = 25
+IMAGE_MAX_BYTES = IMAGE_MAX_MB * 1024 * 1024
 # Training scans in this project are grayscale with a large dark field.
 IMAGE_MAX_COLORFULNESS = 20.0
 IMAGE_MAX_COLORFULNESS_HARD = 80.0
